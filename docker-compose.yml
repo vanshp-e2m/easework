@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ease-work-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ease
+      POSTGRES_PASSWORD: ease
+      POSTGRES_DB: ease_work
+    ports:
+      - "5433:5432"
+    volumes:
+      - ease-work-db:/var/lib/postgresql/data
+
+volumes:
+  ease-work-db:
