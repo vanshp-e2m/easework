@@ -48,8 +48,9 @@ server/
   prisma/seed.ts            demo data
   src/domain.ts             classification rules (research ⇒ R&D Innovation)
   src/services/             business logic – every state change goes through here
-  src/activity.ts           activity log + event bus (feeds real-time, and Slack next)
+  src/activity.ts           activity log + event bus (feeds real-time and Slack)
   src/realtime.ts           Socket.IO: pushes every activity entry to signed-in browsers
+  src/slack.ts              posts availability and pick-ups to a Slack channel
   src/routes/               HTTP endpoints
 client/
   src/pages/                Login, My Status, Board (Kanban), Research, Task page, Sheet, Team Dashboard
@@ -70,7 +71,7 @@ client/
 - [x] **Visibility** – developers see only their own, shared and unassigned tasks; managers see everything
 - [x] **File uploads** – attach documents from your computer (up to 25 MB), alongside web links
 - [x] **Claude seats** – every developer must enter the Claude seat they use; managers see who is on which seat
-- [ ] Step 7 – Slack app
+- [x] **Step 7** – Slack notifications: a message when a developer becomes Available or picks up a task
 
 ## Shared tasks
 
@@ -129,6 +130,27 @@ npm run restore -- 20261105-180000 --yes   # restore (stop npm run dev first)
 - `backups/` is on the same disk as everything else. To survive a disk failure or a lost
   laptop, point it at a synced folder, e.g. set `BACKUP_DIR=C:/Users/<you>/OneDrive/ease-work-backups`
   in a root `.env` file and run `npm run db:up` again.
+
+## Slack
+
+EaseWork posts to one Slack channel when a developer becomes **Available** (including
+after leaving or handing over a task) and when they **pick up** a task. The text matches
+Recent activity, people are @-mentioned when their EaseWork email matches their Slack
+account, and each message links to the task.
+
+1. At api.slack.com/apps, create an app **from a manifest** with the bot scopes
+   `chat:write`, `chat:write.public`, `users:read`, `users:read.email` and token rotation off.
+2. **Install App** → install to the workspace → copy the **Bot User OAuth Token** (`xoxb-…`).
+3. In Slack, copy the channel's **Channel ID**; for a private channel, `/invite @EaseWork`.
+4. Set them in `server/.env` and restart the API:
+   ```
+   SLACK_BOT_TOKEN=xoxb-...
+   SLACK_CHANNEL_ID=C...
+   APP_URL="http://localhost:5173"   # where "Open task" links point
+   ```
+
+With either value empty, Slack is off. If Slack is unreachable, the error is logged and
+the app carries on.
 
 ## Working hours
 

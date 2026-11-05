@@ -123,6 +123,15 @@ stateDiagram-v2
 - If the live connection drops, pages fall back to reloading every 10 seconds
   (`lib/liveRefresh.ts`).
 
+### Slack
+
+- `slack.ts` listens to the same activity log as live updates. When a developer becomes
+  Available, or picks up a task, it posts the activity summary to one channel.
+- Names in the message become @-mentions: each person's Slack account is found by their
+  work email (`users.lookupByEmail`) and remembered in `User.slackUserId`.
+- Messages are sent one at a time, in order. A Slack failure is logged and never blocks
+  the app. Without `SLACK_BOT_TOKEN` and `SLACK_CHANNEL_ID` in `.env`, it is off.
+
 ### Backups
 
 - The `ease-work-backup` container backs up the database and the uploads every 6 hours,
@@ -175,6 +184,7 @@ ease-work/
 │       ├── domain.ts       shared rules: task visibility, who is on a task, classification
 │       ├── activity.ts     writes the activity log and publishes each change
 │       ├── realtime.ts     socket.io: pushes changes to every open browser
+│       ├── slack.ts        posts availability and pick-ups to a Slack channel
 │       ├── uploads.ts      file storage: folder, size limit, blocked file types
 │       ├── workHours.ts    office hours from .env
 │       ├── lib/

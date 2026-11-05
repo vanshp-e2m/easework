@@ -7,6 +7,7 @@ import { describeWorkHours } from './workHours'
 import { requireAuth } from './auth'
 import { errorHandler } from './lib/http'
 import { activityBus } from './activity'
+import { startSlack } from './slack'
 import { authRouter } from './routes/auth'
 import { meRouter } from './routes/me'
 import { tasksRouter } from './routes/tasks'
@@ -37,6 +38,7 @@ activityBus.on('activity', (entry) => console.log(`[activity] ${entry.summary}`)
 
 const server = createServer(app)
 attachRealtime(server)
+startSlack()
 
 // End-of-day: once a minute, set anyone past their working hours to Away.
 const runAutoAway = () => sendDevelopersAwayAfterHours().catch((err) => console.error('[auto-away]', err))
