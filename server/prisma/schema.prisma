@@ -12,9 +12,12 @@ enum Role {
   MANAGER
 }
 
+// AWAY = off for now (done for today, lunch, leave). An away developer keeps
+// their current task so they can resume it in one click.
 enum Availability {
   AVAILABLE
   OCCUPIED
+  AWAY
 }
 
 enum WorkCategory {
@@ -63,21 +66,29 @@ enum LinkKind {
 }
 
 model User {
-  id              String       @id @default(cuid())
+  id              String        @id @default(cuid())
   name            String
-  email           String       @unique
+  email           String        @unique
   passwordHash    String
-  role            Role         @default(DEVELOPER)
+  role            Role          @default(DEVELOPER)
   slackUserId     String?
-  availability    Availability @default(AVAILABLE)
-  statusChangedAt DateTime     @default(now())
-  currentTaskId   String?      @unique
-  currentTask     Task?        @relation("CurrentTask", fields: [currentTaskId], references: [id], onDelete: SetNull)
-  assignedTasks   Task[]       @relation("Assignee")
-  createdTasks    Task[]       @relation("Creator")
+  // The Claude seat (team licence account) this developer uses, e.g. "claude-seat-14".
+  claudeSeat      String?
+  claudeSeatSetAt DateTime?
+  availability    Availability  @default(AVAILABLE)
+  statusChangedAt DateTime      @default(now())
+  // Several developers can share a current task (owner + collaborators).
+  currentTaskId   String?
+  currentTask     Task?         @relation("CurrentTask", fields: [currentTaskId], references: [id], onDelete: SetNull)
+  assignedTasks   Task[]        @relation("Assignee")
+  memberships     TaskMember[]
+  createdTasks    Task[]        @relation("Creator")
   entries         TaskEntry[]
   activities      ActivityLog[]
-  createdAt       DateTime     @default(now())
+  workSessions    WorkSession[]
+  createdAt       DateTime      @default(now())
+
+  @@index([currentTaskId])
 }
 
 model Project {
@@ -106,16 +117,51 @@ model Task {
   project         Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
   startedAt       DateTime?
   completedAt     DateTime?
-  currentFor      User?         @relation("CurrentTask")
+  // Everyone who has this as their current task right now (Occupied or Away).
+  currentFor      User[]        @relation("CurrentTask")
+  // Developers who joined the owner (assignee) on this task.
+  members         TaskMember[]
   entries         TaskEntry[]
   links           TaskLink[]
   activities      ActivityLog[]
+  workSessions    WorkSession[]
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
   @@index([status])
   @@index([category])
   @@index([assigneeId])
+}
+
+// A collaborator: a developer working on a task alongside its owner. The owner
+// is Task.assignee and never has a row here.
+model TaskMember {
+  taskId   String
+  task     Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt DateTime @default(now())
+
+  @@id([taskId, userId])
+  @@index([userId])
+}
+
+// One stretch of active work by one developer on one task. Opened when they go
+// Occupied on it; closed when they switch, finish, go away, or the workday ends.
+// Summing these gives real time spent. At most one open session per developer
+// (partial unique index in the migration).
+model WorkSession {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId    String
+  task      Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  endReason String?
+
+  @@index([taskId])
+  @@index([userId, startedAt])
 }
 
 model TaskEntry {
@@ -131,14 +177,21 @@ model TaskEntry {
   @@index([taskId])
 }
 
+// A web link (url) or a file uploaded from someone's computer (the file fields),
+// never both (a CHECK constraint in the migration).
 model TaskLink {
-  id        String   @id @default(cuid())
-  taskId    String
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  label     String
-  url       String
-  kind      LinkKind @default(SUPPORTING)
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  taskId     String
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label      String
+  url        String?
+  fileName   String?
+  fileSize   Int?
+  mimeType   String?
+  // Name of the stored file in UPLOAD_DIR: random, never derived from user input.
+  storageKey String?  @unique
+  kind       LinkKind @default(SUPPORTING)
+  createdAt  DateTime @default(now())
 
   @@index([taskId])
 }

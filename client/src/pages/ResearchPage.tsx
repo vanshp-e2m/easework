@@ -7,7 +7,8 @@ import { TaskDialog } from '../components/TaskDialog'
 import { useToast } from '../components/toast'
 import { Button } from '../components/ui'
 import { ago } from '../lib/labels'
-import { usePickUpTask, useProjects, useTasks } from '../lib/queries'
+import { isOnTask, listNames, peopleOn } from '../lib/people'
+import { useJoinTask, usePickUpTask, useProjects, useTasks } from '../lib/queries'
 import { countStages, researchStage, STAGE_LABEL, type ResearchStage } from '../lib/research'
 import type { TaskCard } from '../lib/types'
 
@@ -30,6 +31,7 @@ export function ResearchPage() {
   const { data: tasks = [], isLoading } = useTasks()
   const { data: projects = [] } = useProjects()
   const pickUp = usePickUpTask()
+  const join = useJoinTask()
   const toast = useToast()
   const [stage, setStage] = useState<ResearchStage>('OPEN')
   const [creating, setCreating] = useState(false)
@@ -39,8 +41,8 @@ export function ResearchPage() {
   const list = research.filter((t) => researchStage(t) === stage)
   const isDeveloper = me?.role === 'DEVELOPER'
 
-  function pick(task: TaskCard, start: boolean) {
-    pickUp.mutate(
+  function pick(task: TaskCard, start: boolean, asCollaborator = false) {
+    ;(asCollaborator ? join : pickUp).mutate(
       { id: task.id, start },
       {
         onSuccess: () => toast(start ? `You're now working on "${task.title}"` : `"${task.title}" is on your list`),
@@ -48,6 +50,7 @@ export function ResearchPage() {
       },
     )
   }
+  const busy = pickUp.isPending || join.isPending
 
   return (
     <div className="space-y-5">
@@ -107,11 +110,16 @@ export function ResearchPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   {t.assignee ? (
                     <>
-                      <span className="text-sm text-slate-600">{t.assignee.id === me?.id ? 'You' : t.assignee.name}</span>
+                      <span className="text-sm text-slate-600">
+                        {listNames(peopleOn(t).map((p) => (p.id === me?.id ? 'You' : p.name)))}
+                      </span>
                       <TaskStatusBadge value={t.status} />
+                      {isDeveloper && t.status !== 'COMPLETED' && !isOnTask(t, me.id) && (
+                        <PickUpButtons task={t} join disabled={busy} onPick={(start) => pick(t, start, true)} />
+                      )}
                     </>
                   ) : (
-                    isDeveloper && <PickUpButtons task={t} disabled={pickUp.isPending} onPick={(start) => pick(t, start)} />
+                    isDeveloper && <PickUpButtons task={t} disabled={busy} onPick={(start) => pick(t, start)} />
                   )}
                 </div>
               </div>

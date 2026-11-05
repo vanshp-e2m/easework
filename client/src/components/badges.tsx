@@ -3,12 +3,18 @@ import type { Availability, Priority, TaskStatus, WorkCategory } from '../lib/ty
 
 const pill = 'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap'
 
+const AVAILABILITY_STYLE: Record<Availability, { label: string; pill: string; dot: string }> = {
+  AVAILABLE: { label: 'Available', pill: 'bg-emerald-100 text-emerald-800', dot: 'bg-emerald-500' },
+  OCCUPIED: { label: 'Occupied', pill: 'bg-amber-100 text-amber-800', dot: 'bg-amber-500' },
+  AWAY: { label: 'Away', pill: 'bg-slate-200 text-slate-700', dot: 'bg-slate-400' },
+}
+
 export function AvailabilityBadge({ value }: { value: Availability }) {
-  const available = value === 'AVAILABLE'
+  const s = AVAILABILITY_STYLE[value]
   return (
-    <span className={`${pill} ${available ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${available ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-      {available ? 'Available' : 'Occupied'}
+    <span className={`${pill} ${s.pill}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
+      {s.label}
     </span>
   )
 }

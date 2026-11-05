@@ -6,6 +6,19 @@ const prisma = new PrismaClient()
 const PASSWORD = 'password123'
 
 async function main() {
+  // The seed wipes everything. Never do that to a database people are using,
+  // unless asked explicitly (npm run db:reset-demo, which backs up first).
+  const force = process.argv.includes('--force')
+  if (!force && (await prisma.user.count()) > 0) {
+    console.error(
+      'This database already has data, so the demo seed was NOT run (it would delete everything).\n' +
+        'To wipe it and load the demo data, run: npm run db:reset-demo (takes a backup first).',
+    )
+    process.exitCode = 1
+    return
+  }
+
+  await prisma.workSession.deleteMany()
   await prisma.activityLog.deleteMany()
   await prisma.taskEntry.deleteMany()
   await prisma.taskLink.deleteMany()
@@ -17,14 +30,14 @@ async function main() {
   const passwordHash = await bcrypt.hash(PASSWORD, 10)
 
   const manager = await prisma.user.create({
-    data: { name: 'Maya Manager', email: 'manager@ease.work', passwordHash, role: 'MANAGER' },
+    data: { name: 'Maya Manager', email: 'maya.manager@e2m.solutions', passwordHash, role: 'MANAGER' },
   })
   const [devA, devB, devC, devD] = await Promise.all(
     [
-      ['Aarav Shah', 'aarav@ease.work'],
-      ['Priya Mehta', 'priya@ease.work'],
-      ['Rohan Desai', 'rohan@ease.work'],
-      ['Sara Khan', 'sara@ease.work'],
+      ['Aarav Shah', 'aarav.shah@e2m.solutions'],
+      ['Priya Mehta', 'priya.mehta@e2m.solutions'],
+      ['Rohan Desai', 'rohan.desai@e2m.solutions'],
+      ['Sara Khan', 'sara.khan@e2m.solutions'],
     ].map(([name, email]) => prisma.user.create({ data: { name, email, passwordHash } })),
   )
 
@@ -220,6 +233,30 @@ async function main() {
       { actorId: devC.id, taskId: vectorTask.id, action: 'STATUS_AVAILABLE', summary: `${devC.name} completed "${vectorTask.title}" (R&D Innovation) and is now Available`, createdAt: at(4 * day) },
       { actorId: manager.id, taskId: rohanTask.id, action: 'TASK_CREATED', summary: `${manager.name} created "${rohanTask.title}" (R&D Innovation) and assigned it to ${devC.name}`, createdAt: at(3 * 3600_000) },
       { actorId: devC.id, taskId: rohanTask.id, action: 'STATUS_OCCUPIED', summary: `${devC.name} is now Occupied — started "${rohanTask.title}" (R&D Innovation)`, createdAt: at(2 * 3600_000) },
+      { actorId: devD.id, taskId: rohanTask.id, action: 'TASK_JOINED', summary: `${devD.name} joined ${devC.name} on "${rohanTask.title}" (R&D Innovation)`, createdAt: at(95 * 60_000) },
+      { actorId: devD.id, taskId: rohanTask.id, action: 'STATUS_AVAILABLE', summary: `${devD.name} stopped working on "${rohanTask.title}" (R&D Innovation) and is now Available — ${devC.name} is still on it`, createdAt: at(35 * 60_000) },
+    ],
+  })
+
+  // A shared task: Sara joined Rohan's prototype for an hour, and stays on it as a collaborator.
+  await prisma.taskMember.create({ data: { taskId: rohanTask.id, userId: devD.id, joinedAt: at(95 * 60_000) } })
+
+  // Work sessions: the two people working right now have one open session each;
+  // finished work has closed sessions, so time spent and weekly hours have history.
+  const byTitle = async (title: string) => (await prisma.task.findFirstOrThrow({ where: { title } })).id
+  const hour = 3600_000
+  await prisma.workSession.createMany({
+    data: [
+      { userId: devB.id, taskId: priyaTask.id, startedAt: priyaTask.startedAt! },
+      { userId: devC.id, taskId: rohanTask.id, startedAt: rohanTask.startedAt! },
+      { userId: devD.id, taskId: rohanTask.id, startedAt: at(95 * 60_000), endedAt: at(35 * 60_000), endReason: 'PAUSED' },
+      { userId: devB.id, taskId: await byTitle('Weekly client status call notes'), startedAt: at(26 * hour), endedAt: at(24 * hour), endReason: 'PAUSED' },
+      { userId: devD.id, taskId: await byTitle('Migrate Acme site to new hosting'), startedAt: at(2 * day), endedAt: at(2 * day - 1.5 * hour), endReason: 'BLOCKED' },
+      { userId: devA.id, taskId: await byTitle('Set up staging environment for Acme'), startedAt: at(3 * day), endedAt: at(3 * day - 4 * hour), endReason: 'END_OF_DAY' },
+      { userId: devA.id, taskId: await byTitle('Set up staging environment for Acme'), startedAt: at(day + 2 * hour), endedAt: at(day), endReason: 'COMPLETED' },
+      { userId: devC.id, taskId: vectorTask.id, startedAt: at(6 * day), endedAt: at(6 * day - 3.5 * hour), endReason: 'END_OF_DAY' },
+      { userId: devC.id, taskId: vectorTask.id, startedAt: at(5 * day), endedAt: at(5 * day - 5 * hour), endReason: 'END_OF_DAY' },
+      { userId: devC.id, taskId: vectorTask.id, startedAt: at(4 * day + 2 * hour), endedAt: at(4 * day), endReason: 'COMPLETED' },
     ],
   })
 

@@ -1,22 +1,28 @@
 import { useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth'
+import { AssigneeFilter } from '../components/AssigneeFilter'
 import { CategoryBadge, PriorityBadge, TaskStatusBadge } from '../components/badges'
+import { DocLink } from '../components/DocLink'
 import { ProjectDialog } from '../components/ProjectDialog'
 import { Button, inputClass } from '../components/ui'
 import { downloadCsv } from '../lib/csv'
-import { ago, CATEGORY_LABEL, PRIORITY_LABEL, STATUS_LABEL, TYPE_LABEL } from '../lib/labels'
-import { useProjects, useSheet, useTeam } from '../lib/queries'
-import type { Priority, SheetRow, TaskStatus, WorkCategory } from '../lib/types'
+import { ago, CATEGORY_LABEL, duration, PRIORITY_LABEL, STATUS_LABEL, TYPE_LABEL } from '../lib/labels'
+import { isOnTask } from '../lib/people'
+import { useProjects, useSheet } from '../lib/queries'
+import type { DocLinkRef, Priority, SheetRow, TaskStatus, WorkCategory } from '../lib/types'
 
 const STATUS_ORDER: TaskStatus[] = ['NOT_STARTED', 'IN_PROGRESS', 'BLOCKED', 'COMPLETED']
 const PRIORITY_ORDER: Priority[] = ['LOW', 'MEDIUM', 'HIGH', 'URGENT']
+
+// Uploaded files have no public URL; they're downloaded from the task page.
+const linkText = (l: DocLinkRef) => `${l.label}: ${l.url ?? `file "${l.fileName}" (on the task page)`}`
 
 const day = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : ''
 const isoDay = (iso: string | null) => (iso ? iso.slice(0, 10) : '')
 
-type SortKey = 'title' | 'category' | 'assignee' | 'status' | 'priority' | 'started' | 'completed' | 'docs' | 'updated'
+type SortKey = 'title' | 'category' | 'assignee' | 'status' | 'priority' | 'started' | 'completed' | 'docs' | 'time' | 'updated'
 
 const SORT_VALUE: Record<SortKey, (r: SheetRow) => string | number> = {
   title: (r) => r.title.toLowerCase(),
@@ -27,6 +33,7 @@ const SORT_VALUE: Record<SortKey, (r: SheetRow) => string | number> = {
   started: (r) => r.startedAt ?? '',
   completed: (r) => r.completedAt ?? '',
   docs: (r) => Object.values(r.entryCounts).reduce((a, b) => a + b, 0),
+  time: (r) => r.timeSpentSeconds,
   updated: (r) => r.updatedAt,
 }
 
@@ -39,6 +46,7 @@ const COLUMNS: { key: SortKey; label: string; className?: string }[] = [
   { key: 'started', label: 'Started' },
   { key: 'completed', label: 'Completed' },
   { key: 'docs', label: 'Documentation' },
+  { key: 'time', label: 'Time spent' },
   { key: 'updated', label: 'Updated' },
 ]
 
@@ -68,7 +76,6 @@ export function SheetPage() {
   const { me } = useAuth()
   const { data: rows = [], isLoading } = useSheet()
   const { data: projects = [] } = useProjects()
-  const { data: team } = useTeam()
   const [params, setParams] = useSearchParams()
   const [category, setCategory] = useState<'' | WorkCategory>('')
   const [status, setStatus] = useState<'' | TaskStatus>('')
@@ -95,7 +102,7 @@ export function SheetPage() {
       (r) =>
         (!category || r.category === category) &&
         (!status || r.status === status) &&
-        (!assignee || (assignee === 'none' ? !r.assignee : r.assignee?.id === assignee)) &&
+        (!assignee || (assignee === 'none' ? !r.assignee : isOnTask(r, assignee))) &&
         (!query || r.title.toLowerCase().includes(query) || (r.outcome ?? '').toLowerCase().includes(query)),
     )
     .sort((a, b) => {
@@ -111,7 +118,7 @@ export function SheetPage() {
 
   function exportCsv() {
     const header = [
-      'Task', 'Category', 'Type', 'Status', 'Priority', 'Assignee', 'Project', 'Created', 'Started', 'Completed',
+      'Task', 'Category', 'Type', 'Status', 'Priority', 'Assignee', 'Collaborators', 'Project', 'Created', 'Started', 'Completed', 'Time spent (h)', 'Time by person',
       'Progress updates', 'Findings', 'Challenges', 'Solutions', 'Outcome', 'Final report', 'Other links', 'Task link',
     ]
     const body = visible.map((r) => [
@@ -121,17 +128,20 @@ export function SheetPage() {
       STATUS_LABEL[r.status],
       PRIORITY_LABEL[r.priority],
       r.assignee?.name ?? 'Unassigned',
+      r.members.map((m) => m.user.name).join(', '),
       r.project?.name ?? '',
       isoDay(r.createdAt),
       isoDay(r.startedAt),
       isoDay(r.completedAt),
+      (r.timeSpentSeconds / 3600).toFixed(1),
+      r.timeByPerson.map((p) => `${p.name} ${(p.seconds / 3600).toFixed(1)}h`).join('; '),
       r.entryCounts.PROGRESS,
       r.entryCounts.FINDING,
       r.entryCounts.CHALLENGE,
       r.entryCounts.SOLUTION,
       r.outcome ?? '',
-      r.links.filter((l) => l.kind === 'FINAL_REPORT').map((l) => `${l.label}: ${l.url}`).join('\n'),
-      r.links.filter((l) => l.kind === 'SUPPORTING').map((l) => `${l.label}: ${l.url}`).join('\n'),
+      r.links.filter((l) => l.kind === 'FINAL_REPORT').map(linkText).join('\n'),
+      r.links.filter((l) => l.kind === 'SUPPORTING').map(linkText).join('\n'),
       `${window.location.origin}/tasks/${r.id}`,
     ])
     const slug = sheet.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
@@ -216,15 +226,7 @@ export function SheetPage() {
             </option>
           ))}
         </select>
-        <select aria-label="Assignee" className={`${inputClass} sm:w-44`} value={assignee} onChange={(e) => setAssignee(e.target.value)}>
-          <option value="">Everyone</option>
-          <option value="none">Unassigned</option>
-          {team?.members.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </select>
+        <AssigneeFilter value={assignee} onChange={setAssignee} />
         <input
           type="search"
           aria-label="Search"
@@ -241,27 +243,27 @@ export function SheetPage() {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="w-full min-w-[1100px] text-left text-sm">
+        <table className="w-full min-w-[1180px] text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-xs tracking-wide text-slate-500">
             <tr>
-              {COLUMNS.slice(0, 8).map(th)}
+              {COLUMNS.slice(0, 9).map(th)}
               <th scope="col" className="px-3 py-2.5 font-medium uppercase">
                 Outcome / report
               </th>
-              {th(COLUMNS[8])}
+              {th(COLUMNS[9])}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 align-top">
             {isLoading && (
               <tr>
-                <td colSpan={10} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={11} className="px-3 py-8 text-center text-slate-500">
                   Loading…
                 </td>
               </tr>
             )}
             {!isLoading && visible.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={11} className="px-3 py-8 text-center text-slate-500">
                   No tasks on this sheet match the filters.
                 </td>
               </tr>
@@ -284,6 +286,9 @@ export function SheetPage() {
                   </td>
                   <td className="whitespace-nowrap px-3 py-3">
                     {r.assignee?.name ?? <span className="italic text-slate-400">Unassigned</span>}
+                    {r.members.length > 0 && (
+                      <div className="text-xs text-slate-500">+ {r.members.map((m) => m.user.name).join(', ')}</div>
+                    )}
                   </td>
                   <td className="px-3 py-3">
                     <TaskStatusBadge value={r.status} />
@@ -296,18 +301,25 @@ export function SheetPage() {
                   <td className="px-3 py-3">
                     <DocCounts row={r} />
                   </td>
+                  <td className="whitespace-nowrap px-3 py-3 tabular-nums text-slate-700">
+                    {r.timeSpentSeconds ? duration(r.timeSpentSeconds) : <span className="text-slate-300">—</span>}
+                    {r.timeByPerson.length > 1 &&
+                      r.timeByPerson.map((p) => (
+                        <div key={p.name} className="text-xs text-slate-500">
+                          {p.name.split(' ')[0]} {duration(p.seconds)}
+                        </div>
+                      ))}
+                  </td>
                   <td className="max-w-xs px-3 py-3">
                     {r.outcome && <p className="line-clamp-2 text-slate-700" title={r.outcome}>{r.outcome}</p>}
                     {reports.map((l) => (
-                      <a
-                        key={l.url}
-                        href={l.url}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        className="mt-1 block truncate text-xs font-medium text-blue-700 hover:underline"
+                      <DocLink
+                        key={l.id}
+                        link={l}
+                        className="mt-1 block max-w-full truncate text-xs font-medium text-blue-700 hover:underline"
                       >
                         📄 {l.label}
-                      </a>
+                      </DocLink>
                     ))}
                     {!r.outcome && reports.length === 0 && <span className="text-slate-300">—</span>}
                   </td>

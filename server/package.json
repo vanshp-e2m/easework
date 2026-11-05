@@ -8,7 +8,8 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
-    "db:reset": "prisma migrate reset --force",
+    "db:seed:force": "prisma db seed -- --force",
+    "db:reset": "npm --prefix .. run backup && prisma migrate reset --force",
     "db:studio": "prisma studio",
     "db:local": "tsx scripts/local-db.ts"
   },
@@ -21,6 +22,7 @@
     "dotenv": "^18.0.9",
     "express": "^5.3.0",
     "jsonwebtoken": "^9.0.3",
+    "multer": "2.5.0",
     "socket.io": "^4.8.4",
     "zod": "^3.25.76"
   },
@@ -28,6 +30,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "2.3.0",
     "@types/node": "^26.6.6",
     "embedded-postgres": "^16.15.0-beta.19",
     "prisma": "^6.19.3",

@@ -4,11 +4,11 @@ import { useAuth } from '../auth'
 import { Button, ErrorText, inputClass } from '../components/ui'
 
 const DEMO_ACCOUNTS = [
-  ['manager@ease.work', 'Manager'],
-  ['aarav@ease.work', 'Developer – Available, has a WordPress task'],
-  ['priya@ease.work', 'Developer – Occupied on PM support'],
-  ['rohan@ease.work', 'Developer – Occupied on R&D'],
-  ['sara@ease.work', 'Developer – Available, has a Blocked task'],
+  ['maya.manager@e2m.solutions', 'Manager'],
+  ['aarav.shah@e2m.solutions', 'Developer – Available, has a WordPress task'],
+  ['priya.mehta@e2m.solutions', 'Developer – Occupied on PM support'],
+  ['rohan.desai@e2m.solutions', 'Developer – Occupied on R&D'],
+  ['sara.khan@e2m.solutions', 'Developer – Available, has a Blocked task'],
 ]
 
 export function LoginPage() {

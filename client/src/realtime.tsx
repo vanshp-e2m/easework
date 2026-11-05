@@ -14,20 +14,32 @@ interface LiveEvent {
   summary: string
   actorId: string
   taskId: string | null
-  details: { assigneeId?: string | null; taskStatus?: { to?: string } } | null
+  details: {
+    assigneeId?: string | null
+    ownerId?: string
+    memberIds?: string[]
+    taskStatus?: { to?: string }
+  } | null
 }
 
 // Every live view; a change anywhere can move counts on any of them.
-const LIVE_VIEWS = ['me', 'myTasks', 'tasks', 'sheet', 'team', 'activity']
+const LIVE_VIEWS = ['me', 'myTasks', 'tasks', 'sheet', 'team', 'activity', 'seats']
 
 const LiveStatusContext = createContext<LiveStatus>('offline')
 
 /** Notices worth interrupting someone for — never for their own actions. */
 function noticeFor(e: LiveEvent, me: { id: string; role: string }): string | null {
   if (e.actorId === me.id) return null
-  const assignedToMe = e.details?.assigneeId === me.id
+  // Made owner, or added as a collaborator.
+  const assignedToMe = e.details?.assigneeId === me.id || !!e.details?.memberIds?.includes(me.id)
   if (me.role === 'DEVELOPER') {
-    return assignedToMe && (e.action === 'TASK_CREATED' || e.action === 'TASK_UPDATED') ? e.summary : null
+    // Someone joined a task you own, or handed theirs over to you.
+    if (e.action === 'TASK_JOINED') return e.details?.ownerId === me.id ? e.summary : null
+    const handedOver = e.action === 'TASK_RELEASED' && assignedToMe
+    const added = ['TASK_CREATED', 'TASK_UPDATED', 'MEMBER_ADDED'].includes(e.action)
+    return handedOver || (assignedToMe && added)
+      ? e.summary
+      : null
   }
   const to = e.details?.taskStatus?.to
   if (e.action === 'TASK_PICKED_UP' || e.action === 'TASK_COMPLETED' || to === 'COMPLETED' || to === 'BLOCKED') {

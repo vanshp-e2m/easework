@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { PRIORITY_LABEL, TYPE_LABEL } from '../lib/labels'
+import { AVAILABILITY_LABEL, PRIORITY_LABEL, TYPE_LABEL } from '../lib/labels'
 import { useProjects, useSaveTask, useTeam } from '../lib/queries'
 import type { Priority, TaskCard, TaskInput, TaskType, WorkCategory } from '../lib/types'
 import { Button, ErrorText, inputClass, Modal, Segmented } from './ui'
@@ -68,11 +68,23 @@ function TaskForm({
     priority: task?.priority ?? defaults?.priority ?? 'MEDIUM',
     projectId: task ? (task.project?.id ?? null) : (defaults?.projectId ?? null),
     assigneeId: task?.assignee?.id ?? null,
+    memberIds: task?.members.map((m) => m.user.id) ?? [],
   })
   const set = <K extends keyof TaskInput>(key: K, value: TaskInput[K]) => setForm((f) => ({ ...f, [key]: value }))
 
   function setCategory(category: WorkCategory) {
     setForm((f) => ({ ...f, category, type: category === 'RND_INNOVATION' ? 'RESEARCH' : 'DELIVERY' }))
+  }
+
+  // The owner can't also be a collaborator, and collaborators need an owner to work with.
+  function setOwner(assigneeId: string | null) {
+    setForm((f) => ({ ...f, assigneeId, memberIds: assigneeId ? f.memberIds.filter((id) => id !== assigneeId) : [] }))
+  }
+  function toggleMember(id: string) {
+    setForm((f) => ({
+      ...f,
+      memberIds: f.memberIds.includes(id) ? f.memberIds.filter((m) => m !== id) : [...f.memberIds, id],
+    }))
   }
 
   function submit(e: FormEvent) {
@@ -135,17 +147,13 @@ function TaskForm({
         </Field>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Field label="Assignee">
-          <select
-            className={inputClass}
-            value={form.assigneeId ?? ''}
-            onChange={(e) => set('assigneeId', e.target.value || null)}
-          >
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[3fr_2fr_3fr]">
+        <Field label="Owner">
+          <select className={inputClass} value={form.assigneeId ?? ''} onChange={(e) => setOwner(e.target.value || null)}>
             <option value="">Unassigned</option>
             {team?.members.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.name} · {m.availability === 'AVAILABLE' ? 'Available' : 'Occupied'}
+                {m.name} · {AVAILABILITY_LABEL[m.availability]}
               </option>
             ))}
           </select>
@@ -179,10 +187,40 @@ function TaskForm({
         </Field>
       </div>
 
+      <div>
+        <span className="mb-1 block text-sm font-medium">Collaborators</span>
+        {form.assigneeId ? (
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Collaborators">
+            {team?.members
+              .filter((m) => m.id !== form.assigneeId)
+              .map((m) => {
+                const on = form.memberIds.includes(m.id)
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => toggleMember(m.id)}
+                    className={`rounded-full px-3 py-1 text-sm transition ${
+                      on ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-slate-400'
+                    }`}
+                  >
+                    {on && '✓ '}
+                    {m.name}
+                  </button>
+                )
+              })}
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">Choose an owner first, then add anyone working on it with them.</p>
+        )}
+        <p className="mt-1 text-xs text-slate-500">Everyone on the task has their own time tracked.</p>
+      </div>
+
       {reassigningActive && (
         <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          {task?.assignee?.name} is working on this right now. Reassigning frees them up and moves the task back to Not
-          Started.
+          {task?.assignee?.name} is working on this right now. Reassigning frees them up, and the task goes back to Not
+          Started unless a collaborator is still working on it.
         </p>
       )}
 

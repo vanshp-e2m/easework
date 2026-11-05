@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { useMyTasks, useProjects, useSetOccupied } from '../lib/queries'
 import { PRIORITY_LABEL, TYPE_LABEL } from '../lib/labels'
@@ -13,8 +14,9 @@ export function OccupiedDialog({ open, onClose }: { open: boolean; onClose: () =
   const setOccupied = useSetOccupied()
 
   const pickable = tasks.filter((t) => t.id !== me?.currentTask?.id)
-  const [mode, setMode] = useState<'pick' | 'new'>('pick')
-  const effectiveMode = pickable.length === 0 ? 'new' : mode
+  // Opens on "My tasks" when there are any to switch to, otherwise on "Create new task".
+  const [chosen, setChosen] = useState<'pick' | 'new' | null>(null)
+  const effectiveMode = chosen ?? (pickable.length > 0 ? 'pick' : 'new')
 
   const [taskId, setTaskId] = useState('')
   const [title, setTitle] = useState('')
@@ -27,6 +29,7 @@ export function OccupiedDialog({ open, onClose }: { open: boolean; onClose: () =
     setOccupied.reset()
     setTaskId('')
     setTitle('')
+    setChosen(null)
     onClose()
   }
 
@@ -52,18 +55,24 @@ export function OccupiedDialog({ open, onClose }: { open: boolean; onClose: () =
   return (
     <Modal open={open} onClose={close} title={me?.currentTask ? 'Switch to another task' : "What are you working on?"}>
       <form onSubmit={submit} className="space-y-4">
-        {pickable.length > 0 && (
-          <Segmented
-            value={effectiveMode}
-            onChange={setMode}
-            options={[
-              { value: 'pick', label: `My assigned tasks (${pickable.length})` },
-              { value: 'new', label: 'Something else' },
-            ]}
-          />
-        )}
+        <Segmented
+          value={effectiveMode}
+          onChange={setChosen}
+          options={[
+            { value: 'pick', label: `My tasks (${pickable.length})` },
+            { value: 'new', label: '+ Create new task' },
+          ]}
+        />
 
-        {effectiveMode === 'pick' ? (
+        {effectiveMode === 'pick' && pickable.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500">
+            {me?.currentTask ? 'You have no other open tasks.' : 'You have no open tasks.'} Create a new one, or{' '}
+            <Link to="/research" onClick={close} className="font-medium text-slate-900 underline">
+              pick up a research task
+            </Link>
+            .
+          </p>
+        ) : effectiveMode === 'pick' ? (
           <ul className="space-y-2">
             {pickable.map((t) => (
               <li key={t.id}>
@@ -95,7 +104,7 @@ export function OccupiedDialog({ open, onClose }: { open: boolean; onClose: () =
         ) : (
           <div className="space-y-4">
             <label className="block">
-              <span className="mb-1 block text-sm font-medium">Task</span>
+              <span className="mb-1 block text-sm font-medium">New task name</span>
               <input
                 autoFocus
                 className={inputClass}

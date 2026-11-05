@@ -1,5 +1,5 @@
 export type Role = 'DEVELOPER' | 'MANAGER'
-export type Availability = 'AVAILABLE' | 'OCCUPIED'
+export type Availability = 'AVAILABLE' | 'OCCUPIED' | 'AWAY'
 export type WorkCategory = 'RND_INNOVATION' | 'DELIVERY_TEAM'
 export type TaskType = 'RESEARCH' | 'DELIVERY' | 'PM_SUPPORT'
 export type TaskStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'BLOCKED' | 'COMPLETED'
@@ -15,6 +15,11 @@ export interface Project extends ProjectRef {
   description: string | null
 }
 
+export interface Person {
+  id: string
+  name: string
+}
+
 export interface TaskSummary {
   id: string
   title: string
@@ -24,6 +29,8 @@ export interface TaskSummary {
   priority: Priority
   startedAt: string | null
   project: ProjectRef | null
+  /** Everyone who has this as their current task: Occupied on it, or Away from it. */
+  currentFor: (Person & { availability: Availability })[]
 }
 
 export interface TaskCard extends TaskSummary {
@@ -32,7 +39,10 @@ export interface TaskCard extends TaskSummary {
   completedAt: string | null
   createdAt: string
   updatedAt: string
-  assignee: { id: string; name: string } | null
+  /** The owner. */
+  assignee: Person | null
+  /** Developers working on it alongside the owner, in the order they joined. */
+  members: { joinedAt: string; user: Person }[]
   createdBy: { id: string; name: string }
 }
 
@@ -45,6 +55,8 @@ export interface TaskInput {
   priority: Priority
   projectId: string | null
   assigneeId: string | null
+  /** Collaborators alongside the owner (assigneeId). */
+  memberIds: string[]
 }
 
 export interface TeamMember {
@@ -58,11 +70,37 @@ export interface TeamMember {
 
 export interface Me extends TeamMember {
   role: Role
+  /** The Claude seat this developer uses, e.g. "claude-seat-14". Required for developers. */
+  claudeSeat: string | null
+}
+
+export interface SeatRow {
+  id: string
+  name: string
+  availability: Availability
+  claudeSeat: string | null
+  claudeSeatSetAt: string | null
 }
 
 export interface TeamResponse {
-  members: TeamMember[]
-  summary: { total: number; available: number; occupiedDelivery: number; occupiedRnd: number }
+  members: (TeamMember & { todaySeconds: number })[]
+  summary: {
+    total: number
+    available: number
+    away: number
+    occupiedDelivery: number
+    occupiedRnd: number
+    weekSeconds: Record<WorkCategory, number>
+  }
+  workHours: string
+}
+
+export interface WorkSession {
+  id: string
+  startedAt: string
+  endedAt: string | null
+  endReason: string | null
+  user: { id: string; name: string }
 }
 
 export interface Activity {
@@ -85,11 +123,19 @@ export interface TaskEntry {
   author: { id: string; name: string }
 }
 
-export interface TaskLink {
+/** A web link (url) or an uploaded file (fileName etc.), never both. */
+export interface DocLinkRef {
   id: string
   label: string
-  url: string
+  url: string | null
+  fileName: string | null
+  mimeType?: string | null
   kind: LinkKind
+}
+
+export interface TaskLink extends DocLinkRef {
+  fileSize: number | null
+  mimeType: string | null
   createdAt: string
 }
 
@@ -106,12 +152,16 @@ export interface TaskDetail {
   entries: TaskEntry[]
   links: TaskLink[]
   history: HistoryItem[]
+  sessions: WorkSession[]
 }
 
 export interface SheetRow extends TaskCard {
   outcome: string | null
+  timeSpentSeconds: number
+  /** Most time first. */
+  timeByPerson: { name: string; seconds: number }[]
   entryCounts: Record<EntryKind, number>
-  links: { label: string; url: string; kind: LinkKind }[]
+  links: DocLinkRef[]
 }
 
 export type ReleaseOutcome = 'COMPLETED' | 'NOT_STARTED' | 'BLOCKED'

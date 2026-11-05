@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { useLiveStatus } from '../realtime'
 import { AvailabilityBadge } from './badges'
+import { SeatReminder } from './ClaudeSeat'
 
 const LIVE_LABEL = {
   live: { text: 'Live', dot: 'bg-emerald-500', hint: 'Changes appear instantly' },
@@ -70,6 +71,7 @@ export function Layout() {
           </div>
         </div>
       </header>
+      <SeatReminder />
       <main className="mx-auto max-w-7xl px-4 py-6">
         <Outlet />
       </main>

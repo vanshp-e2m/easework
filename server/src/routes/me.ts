@@ -5,7 +5,8 @@ import { prisma } from '../prisma'
 import { currentUser, requireRole } from '../auth'
 import { HttpError } from '../lib/http'
 import { taskSummarySelect } from '../domain'
-import { setAvailable, setOccupied } from '../services/availability'
+import { setAvailable, setAway, setOccupied } from '../services/availability'
+import { setClaudeSeat } from '../services/seats'
 
 export const meRouter = Router()
 
@@ -16,6 +17,7 @@ const meSelect = {
   role: true,
   availability: true,
   statusChangedAt: true,
+  claudeSeat: true,
   currentTask: { select: taskSummarySelect },
 } as const
 
@@ -30,10 +32,14 @@ meRouter.get('/', async (req, res) => {
   res.json(await loadMe(currentUser(req).id))
 })
 
-// Open tasks assigned to me — the list a developer picks from when going Occupied.
+// Open tasks I own or have joined — the list a developer picks from when going Occupied.
 meRouter.get('/tasks', async (req, res) => {
+  const myId = currentUser(req).id
   const tasks = await prisma.task.findMany({
-    where: { assigneeId: currentUser(req).id, status: { not: 'COMPLETED' } },
+    where: {
+      status: { not: 'COMPLETED' },
+      OR: [{ assigneeId: myId }, { members: { some: { userId: myId } } }],
+    },
     orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
     select: taskSummarySelect,
   })
@@ -62,6 +68,21 @@ meRouter.post('/occupied', requireRole('DEVELOPER'), async (req, res) => {
 
 const availableSchema = z.object({
   currentTaskOutcome: z.enum(['COMPLETED', 'NOT_STARTED', 'BLOCKED']).optional(),
+})
+
+meRouter.post('/away', requireRole('DEVELOPER'), async (req, res) => {
+  const me = currentUser(req)
+  await setAway(me.id)
+  res.json(await loadMe(me.id))
+})
+
+const seatSchema = z.object({ seat: z.string().trim().min(1, 'Enter the seat you are using').max(60) })
+
+// The Claude seat this developer uses. `sharedWith` names anyone else who entered the same seat.
+meRouter.put('/seat', requireRole('DEVELOPER'), async (req, res) => {
+  const me = currentUser(req)
+  const { sharedWith } = await setClaudeSeat(me.id, seatSchema.parse(req.body).seat)
+  res.json({ me: await loadMe(me.id), sharedWith })
 })
 
 meRouter.post('/available', requireRole('DEVELOPER'), async (req, res) => {

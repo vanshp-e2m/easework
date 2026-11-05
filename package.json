@@ -10,6 +10,9 @@
     "db:down": "docker compose down",
     "db:local": "npm run -w server db:local",
     "db:setup": "npm run -w server db:deploy && npm run -w server db:seed",
+    "db:reset-demo": "npm run backup && npm run -w server db:seed:force",
+    "backup": "docker exec ease-work-backup sh /scripts/backup.sh once",
+    "restore": "docker exec ease-work-backup sh /scripts/restore.sh",
     "dev": "concurrently -n server,client -c blue,green \"npm run -w server dev\" \"npm run -w client dev\""
   },
   "devDependencies": {

@@ -2,6 +2,8 @@ import 'dotenv/config'
 import { createServer } from 'node:http'
 import express from 'express'
 import { attachRealtime } from './realtime'
+import { sendDevelopersAwayAfterHours } from './services/endOfDay'
+import { describeWorkHours } from './workHours'
 import { requireAuth } from './auth'
 import { errorHandler } from './lib/http'
 import { activityBus } from './activity'
@@ -35,6 +37,12 @@ activityBus.on('activity', (entry) => console.log(`[activity] ${entry.summary}`)
 
 const server = createServer(app)
 attachRealtime(server)
+
+// End-of-day: once a minute, set anyone past their working hours to Away.
+const runAutoAway = () => sendDevelopersAwayAfterHours().catch((err) => console.error('[auto-away]', err))
+runAutoAway()
+setInterval(runAutoAway, 60_000)
+console.log(`Working hours: ${describeWorkHours()}`)
 
 // Not 4000: LocalWP (common on WordPress teams) listens there.
 const port = Number(process.env.PORT ?? 4100)

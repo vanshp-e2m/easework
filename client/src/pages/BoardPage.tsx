@@ -12,12 +12,14 @@ import {
 } from '@dnd-kit/core'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
+import { AssigneeFilter } from '../components/AssigneeFilter'
 import { CategoryBadge, PriorityBadge } from '../components/badges'
 import { TaskDialog } from '../components/TaskDialog'
 import { useToast } from '../components/toast'
 import { Button, inputClass, Segmented } from '../components/ui'
 import { STATUS_LABEL, TYPE_LABEL } from '../lib/labels'
-import { useMoveTask, useProjects, useTasks, useTeam } from '../lib/queries'
+import { initials, isOnTask, peopleOn, workingNow } from '../lib/people'
+import { useMoveTask, useProjects, useTasks } from '../lib/queries'
 import type { TaskCard, TaskStatus, WorkCategory } from '../lib/types'
 
 const COLUMNS: { status: TaskStatus; tone: string; accent: string }[] = [
@@ -27,13 +29,31 @@ const COLUMNS: { status: TaskStatus; tone: string; accent: string }[] = [
   { status: 'COMPLETED', tone: 'bg-emerald-50', accent: 'text-emerald-800' },
 ]
 
-function initials(name: string) {
-  return name
-    .split(' ')
-    .map((p) => p[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase()
+/** Owner and collaborators as stacked avatars; a ring marks who is working on it right now. */
+function People({ task }: { task: TaskCard }) {
+  const people = peopleOn(task)
+  if (people.length === 0) return <span className="text-xs italic text-slate-400">Unassigned</span>
+  const working = new Set(workingNow(task).map((p) => p.id))
+  const title = people.map((p) => (working.has(p.id) ? `${p.name} (working now)` : p.name)).join(', ')
+  return (
+    <span className="flex min-w-0 items-center gap-1.5 text-xs text-slate-600" title={title}>
+      <span className="flex shrink-0 -space-x-1.5">
+        {people.slice(0, 3).map((p, i) => (
+          <span
+            key={p.id}
+            className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold text-white ring-2 ${
+              working.has(p.id) ? 'ring-amber-400' : 'ring-white'
+            } ${i === 0 ? 'bg-slate-800' : 'bg-slate-500'}`}
+          >
+            {initials(p.name)}
+          </span>
+        ))}
+      </span>
+      <span className="truncate">
+        {people.length > 1 ? `${people[0].name.split(' ')[0]} +${people.length - 1}` : people[0].name}
+      </span>
+    </span>
+  )
 }
 
 function CardBody({ task }: { task: TaskCard }) {
@@ -46,16 +66,7 @@ function CardBody({ task }: { task: TaskCard }) {
       </div>
       <div className="mt-3 flex items-center justify-between gap-2">
         <PriorityBadge value={task.priority} />
-        {task.assignee ? (
-          <span className="flex min-w-0 items-center gap-1.5 text-xs text-slate-600">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-800 text-[10px] font-semibold text-white">
-              {initials(task.assignee.name)}
-            </span>
-            <span className="truncate">{task.assignee.name}</span>
-          </span>
-        ) : (
-          <span className="text-xs italic text-slate-400">Unassigned</span>
-        )}
+        <People task={task} />
       </div>
       {task.project && <p className="mt-2 truncate text-xs text-slate-400">{task.project.name}</p>}
     </>
@@ -129,7 +140,6 @@ function Column({
 export function BoardPage() {
   const { me } = useAuth()
   const { data: tasks = [], isLoading } = useTasks()
-  const { data: team } = useTeam()
   const { data: projects = [] } = useProjects()
   const move = useMoveTask()
   const toast = useToast()
@@ -155,13 +165,13 @@ export function BoardPage() {
   }
 
   const isManager = me?.role === 'MANAGER'
-  const canDrag = (t: TaskCard) => isManager || t.assignee?.id === me?.id
+  const canDrag = (t: TaskCard) => isManager || isOnTask(t, me?.id)
 
   const query = search.trim().toLowerCase()
   const visible = tasks.filter(
     (t) =>
       (category === 'ALL' || t.category === category) &&
-      (assignee === '' || (assignee === 'none' ? !t.assignee : t.assignee?.id === assignee)) &&
+      (assignee === '' || (assignee === 'none' ? !t.assignee : isOnTask(t, assignee))) &&
       (!projectId || t.project?.id === projectId) &&
       (!query || t.title.toLowerCase().includes(query)),
   )
@@ -202,23 +212,7 @@ export function BoardPage() {
             ]}
           />
         </div>
-        <select
-          aria-label="Filter by assignee"
-          className={`${inputClass} sm:w-44`}
-          value={assignee}
-          onChange={(e) => setAssignee(e.target.value)}
-        >
-          <option value="">Everyone</option>
-          {me?.role === 'DEVELOPER' && <option value={me.id}>Only mine</option>}
-          <option value="none">Unassigned</option>
-          {team?.members
-            .filter((m) => m.id !== me?.id)
-            .map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-        </select>
+        <AssigneeFilter value={assignee} onChange={setAssignee} />
         <select
           aria-label="Filter by project"
           className={`${inputClass} sm:w-52`}

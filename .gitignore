@@ -5,3 +5,5 @@ dist/
 .dev-report/
 server/.pgdata/
 .playwright-mcp/
+server/uploads/
+backups/
