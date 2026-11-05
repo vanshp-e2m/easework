@@ -39,6 +39,9 @@ Other useful commands:
 
 ## Project layout
 
+For how the app works end to end (request flow, status and task workflows, and what every
+file does), see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
+
 ```
 server/
   prisma/schema.prisma      data model (users, projects, tasks, entries, links, activity log)
